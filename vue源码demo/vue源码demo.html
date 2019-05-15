@@ -1,0 +1,176 @@
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Document</title>
+</head>
+<body>
+    <div id="app"></div>
+
+    <script type="text/javascript">
+    var tempObserable;
+    // 观察者
+    function Observer () {
+        this.observables = [];
+    }
+    Observer.prototype.notify = function(){
+        for (var i = this.observables.length - 1; i >= 0; i--) {
+            this.observables[i].update();
+        }
+    }
+    Observer.prototype.subscribe = function(){
+        this.observables.push(tempObserable);
+    }
+    // 负责对应节点及数据的改变
+    function Observable (node,propName,data) {
+        this.$node = node;
+        this.$propName = propName;
+        this.$data = data;
+    }
+
+    Observable.prototype.update = function(){
+
+        if(this.$node.nodeType === 1) { //元素节点
+            this.$node.value= this.$data[this.$propName];
+        } else if(this.$node.nodeType === 3) {//文本节点
+            // 会触发get 在get内部判断
+            this.$node.nodeValue = this.$data[this.$propName];
+        }
+    }
+
+
+
+
+
+
+    MVVM.prototype.init = function(){
+        // 1: 监视属性，遍历对象，为每个添加观察者方法
+        this.defineReactive(this.$$data,this.$$data.text);
+        // 2: 解析DOM，触发get方法，通过subscribe添加Observable到Observer数组中
+        // 便于触发set方法时，调用notify进行节点数据更新
+        this.compiler(this.$template,this.$$data);
+    }
+
+    MVVM.prototype.compiler = function (tempstr,data) {
+
+        var box = document.querySelector(this.$el);
+        box.innerHTML = tempstr;
+        var nodes = box.children[0].childNodes;
+
+        // 正则匹配
+        var regexText = /.*\{\{(.*)\}\}.*/;
+        var regexV = /^v-(.*)$/;
+
+
+
+        for (var i = nodes.length - 1; i >= 0; i--) {
+            var node = nodes[i];
+            if(node.nodeType === 3) {
+                // 分类判断 nodeType === 3 文本节点 nodeValue
+                var result = regexText.exec(node.nodeValue);
+                if(result) {
+                    // 获取结果与this.$$data匹配 this.$$data[xxx]
+                    // 触发获取
+                    this.textMatch(result[1].trim(),node);
+                }
+            } else if(node.nodeType === 1) {
+              // NodeTypes === 1 input标签 ele.value
+              // 获取元素属性名称
+              var nodeAttrs = node.attributes;
+
+              for(var j = 0 ; j < nodeAttrs.length; j++) {
+               var attr = nodeAttrs[j];
+               var result = regexV.exec(attr.name);
+               if(result) {
+
+                	this.directive[result[1]](attr.value,node,data);
+
+               }
+              }
+            }
+        }
+
+        
+    }
+
+    MVVM.prototype.directive = {
+        model:function(propName,node,data) { // 参数是text
+            var self = this;
+
+            tempObserable = new Observable(node,propName,data);
+            // 给一个初始值
+            node.value = data[propName]; // 触发get
+            // 给元素添加事件
+            node.addEventListener('input',function(e) {
+                // 触发set
+               data[propName] = e.target.value; 
+            });
+        }
+    }
+
+    MVVM.prototype.textMatch = function(propName,node){
+	        // 1:创建存储信息的行为 可观察对象
+	        // 2:将其挂载全局
+	        // 3: 触发get函数
+            tempObserable = new Observable(node,propName,this.$$data);
+            node.nodeValue = this.$$data[propName];
+
+    }
+
+    /**
+     * [defineReactive description]
+     * @param  {[type]} obj [description]
+     * @return {[type]}     [description]
+     */
+    MVVM.prototype.defineReactive = function (obj,value) {
+        for(var key in obj) {
+
+            var observer = new Observer();
+            Object.defineProperty(obj,key,{
+                set:function(v) {
+                    value = v;
+                    observer.notify();
+                },
+                get:function() {
+
+                    if(tempObserable) {
+                        observer.subscribe();
+                        tempObserable = null;
+                    }
+                    return value;
+                }
+            })
+        }
+    }
+
+
+
+    // MVVM 是一个构造函数 接收一个options对象，存起来
+    function MVVM (options) {
+        this.$el = options.el;
+        this.$options = options;
+        this.$data = options.data; //fn
+        this.$template = options.template;
+        this.$$data = this.$data(); // 数据对象
+
+        
+        this.init(); 
+    }
+
+
+    var vm = new MVVM({
+        el:'#app',
+        data() {
+            return {
+                text:'abc'
+            }
+        },
+         template:`<div>
+                <input type="text" v-model="text" />
+                {{ text }}
+            </div>`
+    });
+
+
+    </script>
+</body>
+</html>
